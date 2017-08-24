@@ -1,56 +1,25 @@
 import ast
 import shelve
-from collections import Mapping
+from collections import Mapping, deque
 from pathlib import Path
 from shelve import DbfilenameShelf
 
-
-#
-# class SimpleMultiShelf:
-#     def __init__(self, paths):
-#         self.storage_paths = paths
-#         self.storages = [SimpleShelf(path) for path in paths]
-#         self._key2database = dict()
-#         for idx, storage in enumerate(self.storages):
-#             keys = storage.keys_sorted()
-#             for key in keys:
-#                 self._key2database[key] = idx
-#
-#     def __getitem__(self, key):
-#         return self.storages[self._key2database[key]][key]
-#
-#     def __setitem__(self, key, value):
-#         self.storages[self._key2database[key]][key] = value
-#
-#     def __contains__(self, item):
-#         for storage in self.storages:
-#             if item in storage:
-#                 return True
-#         return False
-#
-#     def __delitem__(self, key):
-#         del self.storages[self._key2database[key]][key]
-#
-#     def sync(self):
-#         for storage in self.storages:
-#             storage.sync()
-#
-#     def keys(self):
-#         keys = set()
-#         for storage in self.storages:
-#             keys.update(storage.keys())
-#         return list(keys)
-#
-#     def close(self):
-#         for storage in self.storages:
-#             storage.close()
-#
-#     def __len__(self):
-#         return np.array([len(storage) for storage in self.storages]).sum()
+import os
 
 
-class SimpleShelf2(DbfilenameShelf):
+class SimpleShelf(DbfilenameShelf):
     def __init__(self, path, replace=False, flag='c', protocol=None, writeback=False, internal_key_encoding="utf-8"):
+        """
+        Creates a shelf which is less particular about the types of the keys.
+        :param Path | str path: Path to (create) shelf.
+        :param bool replace: If true all data in an already-existing database will be removed.
+        :param str flag: Argument for shelve.open()
+        :param protocol: Argument for shelve.open()
+        :param bool writeback: Argument for shelve.open()
+        :param str internal_key_encoding: Decoding used for decoding internal key-strings to original keys.
+        """
+        path = path if isinstance(path, Path) else Path(path)
+        self._path = path
         super().__init__(filename=str(path), flag=flag, protocol=protocol, writeback=writeback)
         if replace:
             self.clear()
@@ -73,11 +42,18 @@ class SimpleShelf2(DbfilenameShelf):
         Properly sort the keys so that the integer 2 and the string '2' will be close to each other etc.
         :return:
         """
-        # TODO: Can be written more efficiently
-        keys = [(self._2_internal_key(key), isinstance(key, str)) for key in self.keys()]
-        keys.sort(key=lambda x: x[0])
-        keys = [(self._2_external_key(key) if not was_string else key) for key, was_string in keys]
+        sorted_internal_keys = sorted(list(self.dict.keys()))
+        keys = [self._2_external_key(key) for key in sorted_internal_keys]
         return keys
+
+    def clear_and_remove(self):
+        self.clear()
+        for val in [".bak", ".dat", ".dir"]:
+            try:
+                os.remove(str(self._path) + val)
+            except FileNotFoundError:
+                pass
+        del self
 
     # Shelf
 
@@ -118,7 +94,7 @@ class SimpleShelf2(DbfilenameShelf):
         return list(super().values())
 
     def __eq__(self, other):
-        if not isinstance(other, SimpleShelf2):
+        if not isinstance(other, SimpleShelf):
             return NotImplemented
         return dict(self.items()) == dict(other.items())
 
@@ -161,20 +137,15 @@ class SimpleShelf2(DbfilenameShelf):
         args_other = []
         if args:
             other = args[0]
-            if isinstance(other, (Mapping, SimpleShelf2)):
-                for key in other:
-                    args_other.append((self._2_external_key(key), other[key]))
+            if isinstance(other, (Mapping, SimpleShelf)):
+                args_other = [(self._2_external_key(key), other[key]) for key in other]
             elif hasattr(other, "keys"):
-                for key in other.keys():
-                    args_other.append((self._2_external_key(key), other[key]))
+                args_other = [(self._2_external_key(key), other[key]) for key in other.keys()]
             else:
-                for key, value in other:
-                    args_other.append((self._2_external_key(key), value))
+                args_other = [(self._2_external_key(key), value) for key, value in other]
 
         # Convert kwargs
-        kwargs_other = dict()
-        for key, value in kwargs.items():
-            kwargs_other[self._2_external_key(key)] = value
+        kwargs_other = {self._2_external_key(key): value for key, value in kwargs.items()}
 
         # Call super
         super().update(self, args_other, **kwargs_other)
@@ -187,76 +158,183 @@ class SimpleShelf2(DbfilenameShelf):
         return super().setdefault(key=key, default=default)
 
 
-if __name__ == "__main__":
-    line = "------------------------------------------------"
+class SimpleMultiShelf:
+    def __init__(self, path, n_storages,
+                 replace=False, flag='c', protocol=None, writeback=False, internal_key_encoding="utf-8"):
+        """
+        Creates multiple Python Shelf's and uses all of them for keeping items in (takes turn).
+        This can be used as a quick fix for having larger datasets than what Python's Shelf allows.
+        :param Path | str path: Path to base name file (multiple will be created).
+        :param int n_storages: Number of storages to use.
+        :param bool replace: If true all data in an already-existing database will be removed.
+        :param str flag: Argument for shelve.open()
+        :param protocol: Argument for shelve.open()
+        :param bool writeback: Argument for shelve.open()
+        :param str internal_key_encoding: Decoding used for decoding internal key-strings to original keys.
+        """
+        path = path if isinstance(path, Path) else Path(path)
+        # Make storages
+        self._n_storages = n_storages
+        self._storage_paths = [Path(str(path) + "_" + str(val)) for val in range(n_storages)]
+        self._storages = [SimpleShelf(path,
+                                      replace=replace,
+                                      flag=flag,
+                                      protocol=protocol,
+                                      writeback=writeback,
+                                      internal_key_encoding=internal_key_encoding)
+                          for path in self._storage_paths]
 
-    # Create a simple shelf
-    print(line)
-    print("Testing special keys.")
+        # Key to database mapping
+        self._key2database = dict()
+        for idx, storage in enumerate(self._storages):
+            keys = storage.keys_sorted()
+            for key in keys:
+                self._key2database[key] = idx
 
-    print("\nCreating SimpleShelf 'box'")
-    box = SimpleShelf2(Path("box"), replace=True)
+        # Storage with fewest items
+        storage_lengths = [len(storage) for storage in self._storages]
+        starting_index = storage_lengths.index(min(storage_lengths))
+        self._storage_cycle = deque(range(n_storages))
+        self._storage_cycle.rotate(-starting_index)
 
-    items = [
-        ("a", "A"),
-        (1, 2),
-        (True, False),
-        (3.4, 5.3)
-    ]
+    def _next_storage_nr(self):
+        nr = self._storage_cycle[0]
+        self._storage_cycle.rotate(-1)
+        return nr
 
-    print("\nAdding various items:")
-    for a_key, a_val in items:
-        print(f"\tbox[{str(a_key):^5s}] <- {str(a_val)}")
-        box[a_key] = a_val
+    def _storage_w_key(self, key):
+        return self._storages[self._key2database[key]]
 
-    print(f"\nKeys: {box.keys()}")
+    def keys_sorted(self):
+        return sorted(self.keys())
 
-    print("\nRetrieving items:")
-    for a_key in box.keys():
-        print(f"\tbox[{str(a_key):^5s}] -> {box[a_key]}")
+    def clear_and_remove(self):
+        for storage in self._storages:
+            storage.clear_and_remove()
+            del storage
+        del self
 
-    ########################################################################
-    print("\n\n" + line)
-    print("Testing side by side commands of SimpleShelf and Shelf")
-    box.clear()
+    # Shelf
 
-    print("\nCreating Shelf 'box2'")
-    box2 = shelve.open("box2")
+    def __setitem__(self, key, value):
+        if key not in self:
+            self._key2database[key] = self._next_storage_nr()
+            self._storage_w_key(key)[key] = value
 
-    print("\nbox")
-    print(box.keys())
-    print("box2")
-    print(list(box2.keys()))
+    def __iter__(self):
+        for storage in self._storages:
+            for key in storage.keys():
+                yield key
 
-    box["a"] = "A"
-    box2["a"] = "A"
-    box["b"] = "B"
-    box2["b"] = "B"
-    box["c"] = "C"
-    box2["c"] = "C"
+    def __delitem__(self, key):
+        del self._storage_w_key(key)[key]
+        del self._key2database[key]
 
-    print("\nbox")
-    print(box.items())
-    print("box2")
-    print(list(box2.items()))
+    def sync(self):
+        for storage in self._storages:
+            storage.sync()
 
-    print("\nbox")
-    print("a" in box)
-    print("box2")
-    print("a" in box2)
+    def close(self):
+        for storage in self._storages:
+            storage.close()
 
-    del box["b"]
-    del box2["b"]
+    def __enter__(self):
+        return self
 
-    print("\nbox")
-    print(box.popitem())
-    print("box2")
-    print(list(box2.popitem()))
+    def __exit__(self, exit_type, value, traceback):
+        self.close()
 
-    print("\nbox")
-    print(box.items())
-    print("box2")
-    print(list(box2.items()))
+    def __len__(self):
+        return sum([len(storage) for storage in self._storages])
 
-    print("\nDone. ")
+    def clear(self):
+        for storage in self._storages:
+            storage.clear()
+
+    # Mapping
+
+    def __getitem__(self, key):
+        return self.get(key)
+
+    def get(self, key, default=None):
+        if key not in self._key2database:
+            raise KeyError(f"'{key}' not in SimpleMultiShelf.")
+        return self._storage_w_key(key).get(key, default=default)
+
+    def __contains__(self, key):
+        if key in self._key2database:
+            return True
+        return False
+
+    def keys(self):
+        return list(self)
+
+    def items(self):
+        item_list = []
+        for storage in self._storages:
+            item_list.extend(storage.items())
+        return item_list
+
+    def values(self):
+        values = []
+        for storage in self._storages:
+            values.extend(storage.values())
+        return values
+
+    def __eq__(self, other):
+        if not isinstance(other, SimpleMultiShelf):
+            return NotImplemented
+        return dict(self.items()) == dict(other.items())
+
+    # MutableMapping
+
+    def pop(self, key, default=None):
+        val = self.get(key, default=default)
+        del self[key]
+        return val
+
+    def popitem(self):
+        storage_nr = self._storage_cycle[-1]
+        self._storage_cycle.rotate(1)
+        key, val = self._storages[storage_nr].popitem()
+        del self._key2database[key]
+        return key, val
+
+    # # Implemented in MutableMapping
+    def clear(self):
+        for storage in self._storages:
+            storage.clear()
+        del self._key2database
+        self._key2database = dict()
+
+    def update(self, *args, **kwargs):
+        if len(args) > 1:
+            raise TypeError('update expected at most 1 arguments, got %d' %
+                            len(args))
+
+        # Convert args
+        args_other = []
+        if args:
+            other = args[0]
+            if isinstance(other, (Mapping, SimpleShelf)):
+                args_other = [(key, other[key]) for key in other]
+            elif hasattr(other, "keys"):
+                args_other = [(key, other[key]) for key in other.keys()]
+            else:
+                args_other = [(key, value) for key, value in other]
+
+        # Convert kwargs
+        kwargs_other = [(key, value) for key, value in kwargs.items()]
+
+        # Call super
+        for key, val in args_other + kwargs_other:
+            self[key] = val
+
+    def setdefault(self, key, default=None):
+        """"
+        D.setdefault(k[,d]) -> D.get(k,d), also set D[k]=d if k not in D
+        """
+        if key not in self:
+            self[key] = default
+        return self[key]
 
