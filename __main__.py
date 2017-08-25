@@ -17,19 +17,22 @@ items = [
     ("a", "A"),
     (1, 2),
     (True, False),
-    (3.4, 5.3)
+    (3.4, 5.3),
+    ((3, "a"), "Tuple key"),
+    ({1, 2, 3}, "Set key (risky)"),
+    ({1: "a", "b": 2}, "Dictionary key"),
 ]
 
 print("\nAdding various items:")
 for a_key, a_val in items:
-    print(f"\tbox[{str(a_key):^5s}] <- {str(a_val):5s}")
+    print(f"\tbox[{str(a_key):^18s}] <- {str(a_val):18s}")
     box[a_key] = a_val
 
 print(f"\nKeys: {box.keys()}")
 
 print("\nRetrieving items:")
 for a_key in box.keys():
-    print(f"\tbox[{str(a_key):^5s}] -> {box[a_key]!s:5s} ({type(a_key).__name__})")
+    print(f"\tbox[{str(a_key):^18s}] -> {box[a_key]!s:18s} ({type(a_key).__name__})")
 
 
 ########################################################################

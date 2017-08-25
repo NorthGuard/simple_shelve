@@ -10,6 +10,10 @@ returned to their original type when retrieved.
 
 Example:
 ```Python
+# Create a simple shelf
+print(line)
+print("Testing special keys.")
+
 print("\nCreating SimpleShelf 'box'")
 box = SimpleShelf(Path("box"), replace=True)
 
@@ -17,38 +21,49 @@ items = [
     ("a", "A"),
     (1, 2),
     (True, False),
-    (3.4, 5.3)
+    (3.4, 5.3),
+    ((3, "a"), "Tuple key"),
+    ({1, 2, 3}, "Set key (risky)"),
+    ({1: "a", "b": 2}, "Dictionary key"),
 ]
 
 print("\nAdding various items:")
 for a_key, a_val in items:
-    print(f"\tbox[{str(a_key):^5s}] <- {str(a_val):5s}")
+    print(f"\tbox[{str(a_key):^18s}] <- {str(a_val):18s}")
     box[a_key] = a_val
 
 print(f"\nKeys: {box.keys()}")
 
 print("\nRetrieving items:")
 for a_key in box.keys():
-print(f"\tbox[{str(a_key):^5s}] -> {box[a_key]!s:5s} ({type(a_key).__name__})")
+    print(f"\tbox[{str(a_key):^18s}] -> {box[a_key]!s:18s} ({type(a_key).__name__})")
 ```
 
 Produces:
 ```
+Testing special keys.
+
 Creating SimpleShelf 'box'
 
 Adding various items:
-	box[  a  ] <- A    
-	box[  1  ] <- 2    
-	box[True ] <- False
-	box[ 3.4 ] <- 5.3  
-	
-Keys: ['a', 1, True, 3.4]
+	box[        a         ] <- A                 
+	box[        1         ] <- 2                 
+	box[       True       ] <- False             
+	box[       3.4        ] <- 5.3               
+	box[     (3, 'a')     ] <- Tuple key         
+	box[    {1, 2, 3}     ] <- Set key (risky)   
+	box[ {1: 'a', 'b': 2} ] <- Dictionary key    
+
+Keys: ['a', 1, True, 3.4, (3, 'a'), {1, 2, 3}, {1: 'a', 'b': 2}]
 
 Retrieving items:
-	box[  a  ] -> A     (str)
-	box[  1  ] -> 2     (int)
-	box[True ] -> False (bool)
-	box[ 3.4 ] -> 5.3   (float)
+	box[        a         ] -> A                  (str)
+	box[        1         ] -> 2                  (int)
+	box[       True       ] -> False              (bool)
+	box[       3.4        ] -> 5.3                (float)
+	box[     (3, 'a')     ] -> Tuple key          (tuple)
+	box[    {1, 2, 3}     ] -> Set key (risky)    (set)
+	box[ {1: 'a', 'b': 2} ] -> Dictionary key     (dict)
 ```
 
 ### MultiSimpleShelf
