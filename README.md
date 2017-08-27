@@ -6,9 +6,31 @@ exceeds the shelve-size-limit.
 
 The `SimpleShelf`-class extends Python's Shelf-class and protects the database from non-string
 input. Instead keys that are simple Python types will be converted to string for storage and 
-returned to their original type when retrieved. 
+returned to their original type when retrieved. Mutable objects should not be used as keys
+(ex. dicts and sets) although the system will accept them as keys. 
+Otherwise convert mutable objects to immutable ones; ex. tuples. 
 
-Example:
+#### Usage
+
+The below example illustrates basic usage.
+```Python
+from simple_shelve import SimpleShelf
+from pathlib import Path
+
+# Create a SimpleShelf at path 'shelf' (and replace files if they already exist)
+s_shelf = SimpleShelf(Path("shelf"), replace=True)
+
+# Add a item
+s_shelf[(1, True, "s")] = 4.5
+
+# Get keys and item
+print(s_shelf.keys())
+print(s_shelf[(1, True, "s")])
+# [(1, True, 's')]
+# 4.5
+```
+
+#### Larger Example:
 ```Python
 # Create a simple shelf
 print("Testing special keys.")
