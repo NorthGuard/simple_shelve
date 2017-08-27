@@ -7,7 +7,6 @@ from simple_shelve import SimpleShelf, SimpleMultiShelf
 line = "------------------------------------------------"
 
 # Create a simple shelf
-print(line)
 print("Testing special keys.")
 
 print("\nCreating SimpleShelf 'box'")
@@ -18,21 +17,21 @@ items = [
     (1, 2),
     (True, False),
     (3.4, 5.3),
-    ((3, "a"), "Tuple key"),
-    ({1, 2, 3}, "Set key (risky)"),
-    ({1: "a", "b": 2}, "Dictionary key"),
+    ((3, "a"), (1, "Tuple key")),
+    ({1, 2, 3}, ("", "Set key (risky)")),
+    ({1: "a", "b": 2}, (4.5, "Dict key (risky)")),
 ]
 
 print("\nAdding various items:")
 for a_key, a_val in items:
-    print(f"\tbox[{str(a_key):^18s}] <- {str(a_val):18s}")
+    print(f"\tbox[{str(a_key):^18s}] <- {str(a_val):25s}")
     box[a_key] = a_val
 
 print(f"\nKeys: {box.keys()}")
 
 print("\nRetrieving items:")
 for a_key in box.keys():
-    print(f"\tbox[{str(a_key):^18s}] -> {box[a_key]!s:18s} ({type(a_key).__name__})")
+    print(f"\tbox[{str(a_key):^18s}] -> {box[a_key]!s:25s} ({type(a_key).__name__})")
 
 
 ########################################################################
