@@ -1,5 +1,6 @@
 import ast
 import shelve
+import textwrap
 from collections import Mapping, deque
 from pathlib import Path
 from shelve import DbfilenameShelf
@@ -148,7 +149,7 @@ class SimpleShelf(DbfilenameShelf):
         kwargs_other = {self._2_external_key(key): value for key, value in kwargs.items()}
 
         # Call super
-        super().update(self, args_other, **kwargs_other)
+        super().update(args_other, **kwargs_other)
 
     def setdefault(self, key, default=None):
         """"
